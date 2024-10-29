@@ -46,7 +46,7 @@ def assure_dir(path):
 
 def main(args):
     setup_seed(seed)
-    save_dir = "./res/{}/".format(args.data_name)
+    save_dir = "./pretrained_gnn/{}/".format(args.data_name)
     logger = Logger(args, save_dir)
     model_save_name = f"{args.gnn_type}-{args.exp_time}-og.pkl"
 
@@ -89,6 +89,7 @@ def main(args):
             epoch_loss += loss / len(loader)
         # break
         logger.log("{}th epoch mean loss:{}".format(j + 1, epoch_loss))
+    print("save path:", osp.join(save_dir, model_save_name))
     torch.save(model.state_dict(), osp.join(save_dir, model_save_name))
 
 
@@ -96,26 +97,27 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--aggregation_times", type=int, default=2, help="Aggregation times")
-    parser.add_argument("--epoch_num", type=int, default=2, help="epoch number")
+    parser.add_argument("--epoch_num", type=int, default=3, help="epoch number")
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--edge_coef", type=float, default=10)
     parser.add_argument("--neigh_num", type=int, default=3)
 
-    parser.add_argument("--gnn_input", type=int, default=128)
-    parser.add_argument("--gnn_hid", type=int, default=128)
-    parser.add_argument("--gnn_output", type=int, default=128)
+    parser.add_argument("--gnn_input", type=int, default=384)
+    parser.add_argument("--gnn_hid", type=int, default=384)
+    parser.add_argument("--gnn_output", type=int, default=384)
 
     parser.add_argument("--context_length", type=int, default=128)
 
-    parser.add_argument("--embed_dim", type=int, default=128)
+    parser.add_argument("--embed_dim", type=int, default=384)
     parser.add_argument("--transformer_heads", type=int, default=8)
     parser.add_argument("--transformer_layers", type=int, default=12)
     parser.add_argument("--transformer_width", type=int, default=512)
     parser.add_argument("--vocab_size", type=int, default=49408)  # 49408
-    parser.add_argument("--data_name", type=str, default="Cora")
+    parser.add_argument("--data_name", type=str, default="cora")
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--log", type=int, default=1)
+    parser.add_argument("--path_prefix", type=str, default="/root/lht/GALLM/dataset/")
 
     # gt config
     parser.add_argument("--gnn_type", type=str, default="gt")
@@ -131,26 +133,32 @@ if __name__ == "__main__":
     device = torch.device("cuda:{}".format(args.gpu) if torch.cuda.is_available() else "cpu")
     print("device:", device)
 
-    num_nodes = 0
-    tit_list = []
-    tit_dict = json.load(open("./data/{}/{}_text.json".format(args.data_name, args.data_name)))
-    new_dict = {}
+    if 1:
+        data_path = f"{args.path_prefix}/{args.data_name}/processed_data.pt"
+        data = torch.load(data_path)
 
-    for i in range(len(tit_dict)):
-        num_nodes += 1
-        new_dict[i] = tit_dict[str(i)]
+        num_nodes = 0
+        tit_list = []
+        tit_dict = data.raw_texts
+        new_dict = {}
 
-    print("num_nodes", num_nodes)
+        for i in range(len(tit_dict)):
+            num_nodes += 1
+            new_dict[i] = tit_dict[i]
 
-    edge_index = np.load("./data/{}/{}_edge.npy".format(args.data_name, args.data_name))
+        print("num_nodes", num_nodes)
 
-    arr_edge_index = edge_index
+        if args.data_name == 'instagram':
+            edge_index = torch.tensor(np.transpose(data.edge_index))
+        else:
+            edge_index = data.edge_index
+        arr_edge_index = edge_index
+        edge_index = edge_index.to(device)
 
-    edge_index = torch.from_numpy(edge_index).to(device)
-
-    node_f = np.load("./data/{}/{}_f_bert.npy".format(args.data_name, args.data_name))
-    node_f = preprocessing.StandardScaler().fit_transform(node_f)
-    node_f = torch.from_numpy(node_f).to(torch.float).to(device)
+        data_dir=os.path.dirname(data_path)
+        node_f = torch.load(f"{args.path_prefix}/{args.data_name}/sbert_x.pt")
+        node_f = preprocessing.StandardScaler().fit_transform(node_f)
+        node_f = torch.from_numpy(node_f).to(torch.float).to(device)
 
     start = time.perf_counter()
 
